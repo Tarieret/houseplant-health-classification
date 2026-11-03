@@ -1,90 +1,50 @@
-# Houseplant Health Classification Using Amazon Rekognition
+# Houseplant Health Classification with Amazon Rekognition
 
-*Catching plant disease early prevents inventory loss for nurseries and retailers; a false negative (missing a sick plant) is more costly than a false alarm, so the model needed to be tuned for that asymmetry, not just overall accuracy.*
+Nurseries and plant retailers lose inventory when sick plants go unnoticed. This project classifies houseplant photos as healthy or unhealthy using Amazon Rekognition Custom Labels, served through AWS Lambda. Missing a sick plant costs more than a false alarm, so recall on the unhealthy class mattered more than overall accuracy.
 
-**Problem:** Classify houseplant health (healthy vs. unhealthy) from images, using a managed computer vision service rather than a custom-trained model, while handling a small, imbalanced, self-collected dataset (91 images, only 24 unhealthy).
+![storefront](assets/img/storefront.jpg)
 
-**Architecture decision:** Used Amazon Rekognition Custom Labels instead of training a model from scratch, prioritizing a production-style, serverless architecture over building custom CV infrastructure. Every AWS resource (S3, Rekognition, Lambda, IAM) was provisioned entirely through Python/Boto3 rather than manual console setup, keeping the whole pipeline reproducible from a single notebook. Corrected class imbalance through targeted augmentation (Albumentations) rather than accepting a biased training set, since the unhealthy class was both smaller and higher-stakes to miss.
+## Key results
+On a holdout set of 19 images (14 healthy, 5 unhealthy):
 
-**What broke:** The raw dataset's class imbalance (67 healthy vs. 24 unhealthy) risked a model that defaulted toward predicting "healthy." Augmenting to 201 training images specifically targeted this imbalance rather than just growing the dataset generically.
-
-**Metric:** 0.95 overall accuracy on 19 holdout test images, with 1.00 precision / 0.80 recall on the unhealthy class, the metric that mattered most given the cost of a missed sick plant.
-
-![storefront](assets/img/storefront.png)
-![Plant](assets/img/Plant.png)
-
-## Architecture
-Local Images → S3 Upload → Rekognition Custom Labels Training
-↓
-New Image → S3 (uploads/) → Lambda → Rekognition Inference → S3 (results/)
-
-## Tech Stack
-- **Python** - data preparation, augmentation, pipeline orchestration
-- **Amazon Rekognition Custom Labels** - image classification model
-- **Amazon S3** - image and results storage
-- **AWS Lambda** - serverless inference pipeline
-- **IAM** - permissions and security
-- **scikit-learn** - train/test split and model evaluation
-- **Albumentations** - image augmentation
-- **boto3** - AWS SDK for Python
-
-## Dataset
-- 91 original images (67 healthy, 24 unhealthy) collected from personal houseplants & plant nurseries/shops
-- Augmented to 201 training images to address class imbalance
-- 80/20 train/test split with stratification
-- Available on Kaggle: [Houseplant Health Classification Dataset](https://www.kaggle.com/datasets/tarieretimitimi/houseplant-health-classification-dataset)
-
-## Pipeline
-1. Images organized into healthy/unhealthy folders
-2. Train/test split (80/20) with stratification
-3. Augmentation applied to training set only
-4. Images uploaded to S3 with manifest files for Rekognition
-5. Rekognition Custom Labels model trained on 201 images
-6. Model evaluated against 19 holdout test images
-7. Lambda function deployed for automated inference
-
-## Results
-
-### Classification Report
-precision    recall  f1-score   support
-   healthy       0.93      1.00      0.97        14
- unhealthy       1.00      0.80      0.89         5
-  accuracy                           0.95        19
- macro avg       0.97      0.90      0.93        19
-weighted avg       0.95      0.95      0.95        19
-
-### Summary Table
 | Metric | Healthy | Unhealthy |
 |--------|---------|-----------|
 | Precision | 0.93 | 1.00 |
 | Recall | 1.00 | 0.80 |
-| F1 Score | 0.97 | 0.89 |
-| **Overall Accuracy** | **0.95** | |
+| F1 | 0.97 | 0.89 |
+| **Accuracy** | **0.95** | |
+
+- The model made one error: it classified one unhealthy plant as healthy. That is the costlier kind of mistake, so recall on the unhealthy class is the number to improve.
+- It never flagged a healthy plant as unhealthy (precision 1.00).
+- The test set is small (5 unhealthy images), so these numbers are indicative, not definitive.
 
 ![Confusion Matrix](assets/img/confusion_matrix.png)
 
-## Setup
+## Approach
+Local images → S3 → Rekognition Custom Labels training
+New image → S3 (`uploads/`) → Lambda → Rekognition inference → S3 (`results/`)
 
-### Prerequisites
-- AWS account with appropriate permissions
-- Python 3.11+
-- AWS CLI configured
+- **Managed service over a custom CNN:** I used Rekognition Custom Labels to get a production-style, serverless pipeline rather than building computer-vision infrastructure from scratch.
+- **Self-collected dataset:** 91 photos (67 healthy, 24 unhealthy) taken of my own plants and at two plant shops.
+- **Stratified 80/20 split:** done before augmentation, so the test images stay untouched.
+- **Augmentation on the training set only:** I used Albumentations to expand it to 201 images and reduce the healthy/unhealthy imbalance.
+- **Provisioned in code:** S3, Rekognition, Lambda and IAM were all set up with Boto3 from one notebook, including a cleanup cell to tear them down.
 
-### Installation
-```bash
-pip install boto3 Pillow scikit-learn albumentations matplotlib pandas numpy tqdm torch torchvision
-```
+## Challenge
+With 67 healthy vs. 24 unhealthy images, the model risked defaulting to "healthy." Augmenting the training set was aimed at that imbalance, not just at growing the dataset. The one remaining miss shows the problem is reduced, not solved. More unhealthy examples would be the next step.
 
-### Running the Project
-1. Clone the repo
-2. Add your images to `data/healthy/` and `data/unhealthy/`
-3. Run the notebook top to bottom
-4. To tear down AWS resources run the cleanup cell at the bottom
+## Run it
+1. Clone the repo and add images to `data/healthy/` and `data/unhealthy/`
+2. `pip install boto3 Pillow scikit-learn albumentations matplotlib pandas numpy tqdm torch torchvision`
+3. Configure the AWS CLI (Python 3.11+), then run the notebook top to bottom
+4. Run the cleanup cell at the end to tear down AWS resources
+
+**Dataset:** [Houseplant Health Classification Dataset on Kaggle](https://www.kaggle.com/datasets/tarieretimitimi/houseplant-health-classification-dataset)
+
+## Stack
+Python · Amazon Rekognition Custom Labels · S3 · Lambda · IAM · Boto3 · Albumentations · scikit-learn
 
 ## Acknowledgements
-Training images were collected in person at two plant nurseries whose staff were kind enough to allow photography:
-- **Holiday Foliage Orchids and Plants** — 146 West 28th Street, New York, NY
-- **Redwood Flower Shop** — New Brunswick, NJ
-
-## Reflection
-The "right" metric depends on what a false negative actually costs in the real world. Optimizing for overall accuracy would have hidden exactly the failure mode that mattered most here.
+Training images were collected at two plant shops whose staff kindly allowed photography:
+- **Holiday Foliage Orchids and Plants**, 146 West 28th Street, New York, NY
+- **Redwood Flower Shop**, New Brunswick, NJ
