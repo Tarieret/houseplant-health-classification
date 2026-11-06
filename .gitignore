@@ -1,0 +1,25 @@
+
+# Data
+data/
+
+# AWS
+*.zip
+*.manifest
+
+# Python
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+
+# Mac
+.DS_Store
+
+# Credentials
+.aws/
+venv/
+
+# Raw photos (kept local)
+data_raw/
+
+# iCloud placeholders
+*.icloud
